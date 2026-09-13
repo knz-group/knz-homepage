@@ -1,9 +1,11 @@
+'use client';
+
 import { AuthProvider } from '@/lib/auth-context';
 import { NavBar } from '@/components/navbar';
 import type { Metadata } from 'next';
 import './globals.css';
 
-export const metadata: Metadata = {
+const metadata: Metadata = {
   title: '自動販売機コンテンツ閲覧アプリ',
   description: '様々な自動販売機の中身を写真で確認できるアプリ',
 };

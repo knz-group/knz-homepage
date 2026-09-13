@@ -1,8 +1,11 @@
 'use client';
 
+import { ProtectedRoute } from '@/components/protected-route';
+import { useAuth } from '@/lib/auth-context';
 import { useState } from 'react';
 import { VendingMachineType } from '@/types';
 import { VendingMachineService } from '@/lib/services/vending-machine.service';
+import { UserService } from '@/lib/services/user.service';
 
 const MACHINE_TYPES: { value: VendingMachineType; label: string }[] = [
   { value: 'beverage', label: '飲料' },
@@ -22,6 +25,7 @@ const PREFECTURES = [
 ];
 
 export default function SubmitPage() {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [formData, setFormData] = useState({
@@ -39,7 +43,7 @@ export default function SubmitPage() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       [name]: value,
     }));
@@ -47,6 +51,8 @@ export default function SubmitPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) return;
+
     setLoading(true);
     setMessage(null);
 
@@ -72,12 +78,22 @@ export default function SubmitPage() {
         manufacturer: formData.manufacturer || undefined,
         installDate: formData.installDate || undefined,
         imageGallery: [],
-        tags: formData.tags.split(',').map(t => t.trim()).filter(t => t),
-        createdBy: 'current-user-id', // TODO: Replace with actual user ID from auth
+        tags: formData.tags.split(',').map((t) => t.trim()).filter((t) => t),
+        createdBy: user.uid,
         rating: 0,
       };
 
-      await VendingMachineService.createVendingMachine(machineData);
+      const machineId = await VendingMachineService.createVendingMachine(machineData);
+
+      // ユーザーの投稿機械リストに追加
+      const userRef = await UserService.getUser(user.uid);
+      if (userRef) {
+        await UserService.updateUser(user.uid, {
+          ...userRef,
+          submittedMachines: [...userRef.submittedMachines, machineId],
+        });
+      }
+
       setMessage({ type: 'success', text: '自動販売機を投稿しました！' });
       setFormData({
         name: '',
@@ -92,184 +108,189 @@ export default function SubmitPage() {
         tags: '',
       });
     } catch (error) {
-      setMessage({ type: 'error', text: `エラー: ${error instanceof Error ? error.message : '不明なエラーが発生しました'}` });
+      setMessage({
+        type: 'error',
+        text: `エラー: ${error instanceof Error ? error.message : '不明なエラーが発生しました'}`,
+      });
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div>
-      <h1 className="text-4xl font-bold mb-8">自動販売機を投稿</h1>
+    <ProtectedRoute>
+      <div>
+        <h1 className="text-4xl font-bold mb-8">自動販売機を投稿</h1>
 
-      <div className="max-w-2xl">
-        {message && (
-          <div className={message.type === 'success' ? 'success' : 'error'}>
-            {message.text}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="card">
-          <div className="card-body">
-            {/* Basic Info */}
-            <h3 className="text-xl font-bold mb-4">基本情報</h3>
-
-            <div className="form-group">
-              <label className="form-label">機械の名前 *</label>
-              <input
-                type="text"
-                name="name"
-                className="form-input"
-                value={formData.name}
-                onChange={handleInputChange}
-                required
-                placeholder="例: 新鮮フルーツ自販機"
-              />
+        <div className="max-w-2xl">
+          {message && (
+            <div className={message.type === 'success' ? 'success' : 'error'}>
+              {message.text}
             </div>
+          )}
 
-            <div className="form-group">
-              <label className="form-label">機械タイプ *</label>
-              <select
-                name="type"
-                className="form-select"
-                value={formData.type}
-                onChange={handleInputChange}
-                required
-              >
-                {MACHINE_TYPES.map(type => (
-                  <option key={type.value} value={type.value}>
-                    {type.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <form onSubmit={handleSubmit} className="card">
+            <div className="card-body">
+              {/* Basic Info */}
+              <h3 className="text-xl font-bold mb-4">基本情報</h3>
 
-            <div className="form-group">
-              <label className="form-label">説明 *</label>
-              <textarea
-                name="description"
-                className="form-textarea"
-                value={formData.description}
-                onChange={handleInputChange}
-                required
-                placeholder="この自動販売機について説明してください"
-              />
-            </div>
-
-            {/* Location Info */}
-            <h3 className="text-xl font-bold mb-4 mt-8">場所情報</h3>
-
-            <div className="form-group">
-              <label className="form-label">都道府県 *</label>
-              <select
-                name="prefecture"
-                className="form-select"
-                value={formData.prefecture}
-                onChange={handleInputChange}
-                required
-              >
-                {PREFECTURES.map(pref => (
-                  <option key={pref} value={pref}>
-                    {pref}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">住所 *</label>
-              <input
-                type="text"
-                name="address"
-                className="form-input"
-                value={formData.address}
-                onChange={handleInputChange}
-                required
-                placeholder="例: 東京都渋谷区神宮前1-1-1"
-              />
-            </div>
-
-            <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div className="form-group">
-                <label className="form-label">緯度 *</label>
+                <label className="form-label">機械の名前 *</label>
                 <input
-                  type="number"
-                  step="0.000001"
-                  name="latitude"
+                  type="text"
+                  name="name"
                   className="form-input"
-                  value={formData.latitude}
+                  value={formData.name}
                   onChange={handleInputChange}
                   required
-                  placeholder="例: 35.6762"
+                  placeholder="例: 新鮮フルーツ自販機"
                 />
               </div>
+
               <div className="form-group">
-                <label className="form-label">経度 *</label>
-                <input
-                  type="number"
-                  step="0.000001"
-                  name="longitude"
-                  className="form-input"
-                  value={formData.longitude}
+                <label className="form-label">機械タイプ *</label>
+                <select
+                  name="type"
+                  className="form-select"
+                  value={formData.type}
                   onChange={handleInputChange}
                   required
-                  placeholder="例: 139.6503"
+                >
+                  {MACHINE_TYPES.map((type) => (
+                    <option key={type.value} value={type.value}>
+                      {type.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">説明 *</label>
+                <textarea
+                  name="description"
+                  className="form-textarea"
+                  value={formData.description}
+                  onChange={handleInputChange}
+                  required
+                  placeholder="この自動販売機について説明してください"
                 />
               </div>
-            </div>
 
-            {/* Additional Info */}
-            <h3 className="text-xl font-bold mb-4 mt-8">追加情報（オプション）</h3>
+              {/* Location Info */}
+              <h3 className="text-xl font-bold mb-4 mt-8">場所情報</h3>
 
-            <div className="form-group">
-              <label className="form-label">製造者</label>
-              <input
-                type="text"
-                name="manufacturer"
-                className="form-input"
-                value={formData.manufacturer}
-                onChange={handleInputChange}
-                placeholder="例: FruitMachine Co."
-              />
-            </div>
+              <div className="form-group">
+                <label className="form-label">都道府県 *</label>
+                <select
+                  name="prefecture"
+                  className="form-select"
+                  value={formData.prefecture}
+                  onChange={handleInputChange}
+                  required
+                >
+                  {PREFECTURES.map((pref) => (
+                    <option key={pref} value={pref}>
+                      {pref}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-            <div className="form-group">
-              <label className="form-label">設置日</label>
-              <input
-                type="date"
-                name="installDate"
-                className="form-input"
-                value={formData.installDate}
-                onChange={handleInputChange}
-              />
-            </div>
+              <div className="form-group">
+                <label className="form-label">住所 *</label>
+                <input
+                  type="text"
+                  name="address"
+                  className="form-input"
+                  value={formData.address}
+                  onChange={handleInputChange}
+                  required
+                  placeholder="例: 東京都渋谷区神宮前1-1-1"
+                />
+              </div>
 
-            <div className="form-group">
-              <label className="form-label">タグ（カンマ区切り）</label>
-              <input
-                type="text"
-                name="tags"
-                className="form-input"
-                value={formData.tags}
-                onChange={handleInputChange}
-                placeholder="例: fruit, juice, healthy"
-              />
-            </div>
+              <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div className="form-group">
+                  <label className="form-label">緯度 *</label>
+                  <input
+                    type="number"
+                    step="0.000001"
+                    name="latitude"
+                    className="form-input"
+                    value={formData.latitude}
+                    onChange={handleInputChange}
+                    required
+                    placeholder="例: 35.6762"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">経度 *</label>
+                  <input
+                    type="number"
+                    step="0.000001"
+                    name="longitude"
+                    className="form-input"
+                    value={formData.longitude}
+                    onChange={handleInputChange}
+                    required
+                    placeholder="例: 139.6503"
+                  />
+                </div>
+              </div>
 
-            {/* Submit */}
-            <div className="mt-8">
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={loading}
-                style={{ width: '100%', padding: '0.75rem' }}
-              >
-                {loading ? '投稿中...' : '投稿する'}
-              </button>
+              {/* Additional Info */}
+              <h3 className="text-xl font-bold mb-4 mt-8">追加情報（オプション）</h3>
+
+              <div className="form-group">
+                <label className="form-label">製造者</label>
+                <input
+                  type="text"
+                  name="manufacturer"
+                  className="form-input"
+                  value={formData.manufacturer}
+                  onChange={handleInputChange}
+                  placeholder="例: FruitMachine Co."
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">設置日</label>
+                <input
+                  type="date"
+                  name="installDate"
+                  className="form-input"
+                  value={formData.installDate}
+                  onChange={handleInputChange}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">タグ（カンマ区切り）</label>
+                <input
+                  type="text"
+                  name="tags"
+                  className="form-input"
+                  value={formData.tags}
+                  onChange={handleInputChange}
+                  placeholder="例: fruit, juice, healthy"
+                />
+              </div>
+
+              {/* Submit */}
+              <div className="mt-8">
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={loading}
+                  style={{ width: '100%', padding: '0.75rem' }}
+                >
+                  {loading ? '投稿中...' : '投稿する'}
+                </button>
+              </div>
             </div>
-          </div>
-        </form>
+          </form>
+        </div>
       </div>
-    </div>
+    </ProtectedRoute>
   );
 }
